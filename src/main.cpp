@@ -1,10 +1,10 @@
 /*--------------------------------------------------------------------
 Author: Kristians Abolins
-Date: 30.05.2023
+Date: 5.09.2023
 SerialInputs - None
-SerialPrompts - Full data representation
-Software version - 2.1.3 //Updates: Data transfer between Mega and ESP32, New UI layout, rightheater pwm set to 80, rightwatertemp to 40C
-Hardware version - 1.2.0 //Updates: ESP32 data transfer, heater temp sensor on connectors
+SerialPrompts - Full data representation in .json format. If SD card or RTC is not readable will promt error
+Software version - 2.2.0 //Updates: Data transfer between Mega and ESP32, New UI layout, rightheater pwm set to 80, rightwatertemp to 40C. 
+Hardware version - 2.0.0 //Updates: ESP32 data transfer, heater temp sensor on connectors, PCB shield(no changes in schematics), added second aerator.
 
 Notes:
 Daylight rythm temporarily disabled. 
@@ -141,6 +141,201 @@ int brightness = 0;     // Current LED brightness
 
 SoftwareSerial espSerial(19, 18);  // Define the ESP32 communication pins
 
+
+int calculateBrightness(long seconds) {
+  // Define brightness variables
+  int brightnessMin = 255;
+  int brightnessMax = 255;
+  int brightness = 0;
+
+  // Define time variables
+  long startTime = 28800;   // 8 AM
+  long peakTime = 43200;   // 12 PM
+  long endTime = 75000;    // 8 PM
+
+  // Calculate brightness based on time of day
+  if (seconds >= startTime && seconds <= peakTime) {
+    // Brightness increases from 0 to 255 from 8 AM to 12 PM
+    brightness = map(seconds, startTime, peakTime, brightnessMin, brightnessMax);
+  } else if (seconds > peakTime && seconds <= endTime) {
+    // Brightness decreases from 255 to 0 from 12 PM to 8 PM
+    brightness = map(seconds, peakTime, endTime, brightnessMax, brightnessMin);
+  }
+
+  // Constrain brightness to range 0-255
+  brightness = constrain(brightness, 0, 255);
+
+  return brightness;
+}
+
+// Function for reading the button state
+int readButtonState(unsigned long currentMillis) {
+
+  // If the difference in time between the previous reading is larger than intervalButton
+  if (currentMillis - previousButtonMillis > intervalButton) {
+
+    // Read the digital value of the button (LOW/HIGH)
+    int buttonState = digitalRead(buttonPin);
+
+    // If the button has been pushed AND
+    // If the button wasn't pressed before AND
+    // IF there was not already a measurement running to determine how long the button has been pressed
+    if (buttonState == HIGH && buttonStatePrevious == LOW && !buttonStateLongPress) {
+      buttonLongPressMillis = currentMillis;
+      // made by Saikne - Kristians Abolins
+      buttonStatePrevious = HIGH;
+      Serial.println("Button pressed");
+    }
+
+    // Calculate how long the button has been pressed
+    buttonPressDuration = currentMillis - buttonLongPressMillis;
+
+    // If the button is pressed AND
+    // If there is no measurement running to determine how long the button is pressed AND
+    // If the time the button has been pressed is larger or equal to the time needed for a long press
+    if (buttonState == HIGH && ADMIN_SCREEN == false && !buttonStateLongPress && buttonPressDuration >= minButtonLongPressDuration) {
+      buttonStateLongPress = true;
+      ADMIN_SCREEN = true;
+      Serial.println("ADMIN SCREEN: TRUE");
+    }
+    if (buttonState == HIGH && ADMIN_SCREEN == true && !buttonStateLongPress && buttonPressDuration >= minButtonLongPressDuration) {
+      buttonStateLongPress = true;
+      ADMIN_SCREEN = false;
+      Serial.println("ADMIN SCREEN: FALSE");
+    }
+
+    // If the button is released AND
+    // If the button was pressed before
+    if (buttonState == LOW && buttonStatePrevious == HIGH) {
+      buttonStatePrevious = LOW;
+      buttonStateLongPress = false;
+      Serial.println("Button released");
+
+      // If there is no measurement running to determine how long the button was pressed AND
+      // If the time the button has been pressed is smaller than the minimal time needed for a long press
+      // Note: The video shows:
+      //       if (!buttonStateLongPress && buttonPressDuration < minButtonLongPressDuration) {
+      //       since buttonStateLongPress is set to FALSE on line 75, !buttonStateLongPress is always TRUE
+      //       and can be removed.
+      //      if (buttonPressDuration < minButtonLongPressDuration) {
+      //        Serial.println("Button pressed shortly");
+      //      }
+    }
+
+    // store the current timestamp in previousButtonMillis
+    previousButtonMillis = currentMillis;
+  }
+}
+
+#define countof(a) (sizeof(a) / sizeof(a[0]))
+
+void printDateTime(const RtcDateTime& dt) {
+  char datestring[20];
+
+  snprintf_P(datestring,
+             countof(datestring),
+             PSTR("%02u/%02u/%04u %02u:%02u:%02u"),
+             dt.Day(),
+             dt.Month(),
+             dt.Year(),
+             dt.Hour(),
+             dt.Minute(),
+             dt.Second());
+  Serial.print(datestring);
+}
+void printDateTimeTFT(const RtcDateTime& dt) {
+  char datestring[20];
+
+  snprintf_P(datestring,
+             countof(datestring),
+             PSTR("%02u/%02u/%04u %02u:%02u:%02u"),
+             dt.Month(),
+             dt.Day(),
+             dt.Year(),
+             dt.Hour(),
+             dt.Minute(),
+             dt.Second());
+  tft.print(datestring);
+}
+void printDateTimeSD(const RtcDateTime& dt) {
+  char datestring[20];
+
+  snprintf_P(datestring,
+             countof(datestring),
+             PSTR("%02u/%02u/%04u %02u:%02u:%02u"),
+             dt.Day(),
+             dt.Month(),
+             dt.Year(),
+             dt.Hour(),
+             dt.Minute(),
+             dt.Second());
+  myFile.print(datestring);
+}
+
+
+void dumpSD() {
+  while (!Serial) {
+    ;  // wait for serial port to connect. Needed for native USB port only
+  }
+  //Serial.print("Initializing SD card...");
+  if (!SD.begin(53)) {
+    //Serial.println("initialization failed!");
+    return;
+  } 
+  else {
+    //Serial.println("initialization done.");
+    RtcDateTime now = Rtc.GetDateTime();  //rtc get time
+    char buffer[256] = "";
+    uint16_t ThisYear;
+    uint8_t ThisMonth, ThisDay, ThisHour, ThisMinute, ThisSecond;
+    ThisYear = now.Year();
+    ThisMonth = now.Month();
+    ThisDay = now.Day();
+    ThisHour = now.Hour();
+    ThisMinute = now.Minute();
+    ThisSecond = now.Second();
+    // sprintf(buffer, "%04u%02u%02u", ThisYear, ThisMonth, ThisDay);
+    sprintf(buffer, "log", ThisYear, ThisMonth, ThisDay);
+    myFile = SD.open(buffer + fileFormat, FILE_WRITE);
+  }
+
+  if (myFile) {  // if the file opened okay, write to it:
+
+    RtcDateTime now = Rtc.GetDateTime();  //rtc get time
+    myFile.print(" \n");
+    printDateTimeSD(now);
+    // Making the data colums inside the opened file
+    myFile.print(" \t");
+    myFile.print(scd30.temperature);
+    myFile.print(" \t");
+    myFile.print(scd30.relative_humidity);
+    myFile.print("\t");
+    myFile.print(scd30.CO2);
+    myFile.print("\t");
+    myFile.print(left_water_temp);
+    myFile.print(" \t");
+    myFile.print(right_water_temp);
+    myFile.print("\t");
+    myFile.print(left_heater_temp);
+    myFile.print(" \t");
+    myFile.print(right_heater_temp);
+    myFile.print("\t");
+    myFile.print(left_heater_pwm);
+    myFile.print(" \t");
+    myFile.print(right_heater_pwm);
+    myFile.print(" \t");
+    myFile.print(tower_led_pwm);
+    myFile.print(" \t");
+
+    myFile.close();
+  }
+
+  else {
+    // if the file didn't open, print an error:
+    Serial.println("error opening test.txt");
+    return;
+  }
+}
 
 void setup(void) {
   Serial.begin(9600);
@@ -673,199 +868,3 @@ void loop() {
 //   return days;
 // }
 
-int calculateBrightness(long seconds) {
-  // Define brightness variables
-  int brightnessMin = 255;
-  int brightnessMax = 255;
-  int brightness = 0;
-
-  // Define time variables
-  long startTime = 28800;   // 8 AM
-  long peakTime = 43200;   // 12 PM
-  long endTime = 75000;    // 8 PM
-
-  // Calculate brightness based on time of day
-  if (seconds >= startTime && seconds <= peakTime) {
-    // Brightness increases from 0 to 255 from 8 AM to 12 PM
-    brightness = map(seconds, startTime, peakTime, brightnessMin, brightnessMax);
-  } else if (seconds > peakTime && seconds <= endTime) {
-    // Brightness decreases from 255 to 0 from 12 PM to 8 PM
-    brightness = map(seconds, peakTime, endTime, brightnessMax, brightnessMin);
-  }
-
-  // Constrain brightness to range 0-255
-  brightness = constrain(brightness, 0, 255);
-
-  return brightness;
-}
-
-
-
-// Function for reading the button state
-int readButtonState(unsigned long currentMillis) {
-
-  // If the difference in time between the previous reading is larger than intervalButton
-  if (currentMillis - previousButtonMillis > intervalButton) {
-
-    // Read the digital value of the button (LOW/HIGH)
-    int buttonState = digitalRead(buttonPin);
-
-    // If the button has been pushed AND
-    // If the button wasn't pressed before AND
-    // IF there was not already a measurement running to determine how long the button has been pressed
-    if (buttonState == HIGH && buttonStatePrevious == LOW && !buttonStateLongPress) {
-      buttonLongPressMillis = currentMillis;
-      // made by Saikne - Kristians Abolins
-      buttonStatePrevious = HIGH;
-      Serial.println("Button pressed");
-    }
-
-    // Calculate how long the button has been pressed
-    buttonPressDuration = currentMillis - buttonLongPressMillis;
-
-    // If the button is pressed AND
-    // If there is no measurement running to determine how long the button is pressed AND
-    // If the time the button has been pressed is larger or equal to the time needed for a long press
-    if (buttonState == HIGH && ADMIN_SCREEN == false && !buttonStateLongPress && buttonPressDuration >= minButtonLongPressDuration) {
-      buttonStateLongPress = true;
-      ADMIN_SCREEN = true;
-      Serial.println("ADMIN SCREEN: TRUE");
-    }
-    if (buttonState == HIGH && ADMIN_SCREEN == true && !buttonStateLongPress && buttonPressDuration >= minButtonLongPressDuration) {
-      buttonStateLongPress = true;
-      ADMIN_SCREEN = false;
-      Serial.println("ADMIN SCREEN: FALSE");
-    }
-
-    // If the button is released AND
-    // If the button was pressed before
-    if (buttonState == LOW && buttonStatePrevious == HIGH) {
-      buttonStatePrevious = LOW;
-      buttonStateLongPress = false;
-      Serial.println("Button released");
-
-      // If there is no measurement running to determine how long the button was pressed AND
-      // If the time the button has been pressed is smaller than the minimal time needed for a long press
-      // Note: The video shows:
-      //       if (!buttonStateLongPress && buttonPressDuration < minButtonLongPressDuration) {
-      //       since buttonStateLongPress is set to FALSE on line 75, !buttonStateLongPress is always TRUE
-      //       and can be removed.
-      //      if (buttonPressDuration < minButtonLongPressDuration) {
-      //        Serial.println("Button pressed shortly");
-      //      }
-    }
-
-    // store the current timestamp in previousButtonMillis
-    previousButtonMillis = currentMillis;
-  }
-}
-
-#define countof(a) (sizeof(a) / sizeof(a[0]))
-
-void printDateTime(const RtcDateTime& dt) {
-  char datestring[20];
-
-  snprintf_P(datestring,
-             countof(datestring),
-             PSTR("%02u/%02u/%04u %02u:%02u:%02u"),
-             dt.Day(),
-             dt.Month(),
-             dt.Year(),
-             dt.Hour(),
-             dt.Minute(),
-             dt.Second());
-  Serial.print(datestring);
-}
-void printDateTimeTFT(const RtcDateTime& dt) {
-  char datestring[20];
-
-  snprintf_P(datestring,
-             countof(datestring),
-             PSTR("%02u/%02u/%04u %02u:%02u:%02u"),
-             dt.Month(),
-             dt.Day(),
-             dt.Year(),
-             dt.Hour(),
-             dt.Minute(),
-             dt.Second());
-  tft.print(datestring);
-}
-void printDateTimeSD(const RtcDateTime& dt) {
-  char datestring[20];
-
-  snprintf_P(datestring,
-             countof(datestring),
-             PSTR("%02u/%02u/%04u %02u:%02u:%02u"),
-             dt.Day(),
-             dt.Month(),
-             dt.Year(),
-             dt.Hour(),
-             dt.Minute(),
-             dt.Second());
-  myFile.print(datestring);
-}
-
-
-void dumpSD() {
-  while (!Serial) {
-    ;  // wait for serial port to connect. Needed for native USB port only
-  }
-  //Serial.print("Initializing SD card...");
-  if (!SD.begin(53)) {
-    //Serial.println("initialization failed!");
-    return;
-  } 
-  else {
-    //Serial.println("initialization done.");
-    RtcDateTime now = Rtc.GetDateTime();  //rtc get time
-    char buffer[256] = "";
-    uint16_t ThisYear;
-    uint8_t ThisMonth, ThisDay, ThisHour, ThisMinute, ThisSecond;
-    ThisYear = now.Year();
-    ThisMonth = now.Month();
-    ThisDay = now.Day();
-    ThisHour = now.Hour();
-    ThisMinute = now.Minute();
-    ThisSecond = now.Second();
-    // sprintf(buffer, "%04u%02u%02u", ThisYear, ThisMonth, ThisDay);
-    sprintf(buffer, "log", ThisYear, ThisMonth, ThisDay);
-    myFile = SD.open(buffer + fileFormat, FILE_WRITE);
-  }
-
-  if (myFile) {  // if the file opened okay, write to it:
-
-    RtcDateTime now = Rtc.GetDateTime();  //rtc get time
-    myFile.print(" \n");
-    printDateTimeSD(now);
-    // Making the data colums inside the opened file
-    myFile.print(" \t");
-    myFile.print(scd30.temperature);
-    myFile.print(" \t");
-    myFile.print(scd30.relative_humidity);
-    myFile.print("\t");
-    myFile.print(scd30.CO2);
-    myFile.print("\t");
-    myFile.print(left_water_temp);
-    myFile.print(" \t");
-    myFile.print(right_water_temp);
-    myFile.print("\t");
-    myFile.print(left_heater_temp);
-    myFile.print(" \t");
-    myFile.print(right_heater_temp);
-    myFile.print("\t");
-    myFile.print(left_heater_pwm);
-    myFile.print(" \t");
-    myFile.print(right_heater_pwm);
-    myFile.print(" \t");
-    myFile.print(tower_led_pwm);
-    myFile.print(" \t");
-
-    myFile.close();
-  }
-
-  else {
-    // if the file didn't open, print an error:
-    Serial.println("error opening test.txt");
-    return;
-  }
-}
