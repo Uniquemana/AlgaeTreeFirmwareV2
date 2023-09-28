@@ -1,15 +1,10 @@
 /*--------------------------------------------------------------------
 Author: Kristians Abolins
-Date: 5.09.2023
+Date: 26.09.2023
 SerialInputs - None
 SerialPrompts - Full data representation in .json format. If SD card or RTC is not readable will promt error
-Software version - 2.2.0 //Updates: Data transfer between Mega and ESP32, New UI layout, rightheater pwm set to 80, rightwatertemp to 40C. 
-Hardware version - 2.0.0 //Updates: ESP32 data transfer, heater temp sensor on connectors, PCB shield(no changes in schematics), added second aerator.
-
-Notes:
-Daylight rythm temporarily disabled. 
-Heater maxout 50C on 40PWM. 
-Warning pointing on each of towers when below zero and higher than 80C enabled
+Software version - 2.2.1 //Updates: Data transfer between Mega and ESP32, New UI layout, Disabled all heaters. 
+Hardware version - 2.1.0 //Updates: ESP32 data transfer, PCB shield(no changes in electronics), Removed heaters, added second aerator.
 --------------------------------------------------------------------*/
 
 
@@ -74,14 +69,15 @@ RtcDS1302<ThreeWire> Rtc(myWire);  //realtime clock
 #undef __FlashStringHelper::F(string_literal)
 #define F(string_literal) string_literal
 #endif
-//Adafruit_ST7735 tft = Adafruit_ST7735(TFT_CS, TFT_DC, TFT_RST);
+
 Adafruit_ST7735 tft = Adafruit_ST7735(9, 10, 11, 13, 8);
 Adafruit_SCD30 scd30;  // scd30 co2,humidity,temperature sensor
 //Black theme
 #define COLOR2 ST7735_WHITE
 #define COLOR1 ST7735_BLACK
 
-
+String SV = "2.2.1";
+String HV = "2.1.0";
 int deviceID = 1003;
 const int buttonPin = 48;  // the number of the pushbutton pin
 float air_humidity, air_temp, co2;
@@ -89,10 +85,10 @@ float humidity;
 int temperature;
 int left_water_temp;
 int right_water_temp;
-int left_heater_temp;
-int right_heater_temp;
-int left_heater_pwm;   // Set to 5 for temperature to be 50C
-int right_heater_pwm;  // Set to 5 for temperature to be 50C
+// int left_heater_temp;
+// int right_heater_temp;
+// int left_heater_pwm;   // Set to 5 for temperature to be 50C
+// int right_heater_pwm;  // Set to 5 for temperature to be 50C
 int tower_led_pwm;
 String message;
 int counter = 0;
@@ -102,14 +98,14 @@ int count = 0;                                                           // coun
 int counting = 0;                                                        // counter to SD dump data log heaters
 int newcount = 1;                                                        //menu count
 bool ADMIN_SCREEN = false;                                               //Admin Screen
-int Vo, Vo2;                                                             //thermistor variables
-float R1 = 10000;                                                        //left heater thermistor
-float logR2, R2, T;                                                      //left heater thermistor
-float c1 = 1.009249522e-03, c2 = 2.378405444e-04, c3 = 2.019202697e-07;  //left heater thermistor
+// int Vo, Vo2;                                                             //thermistor variables
+// float R1 = 10000;                                                        //left heater thermistor
+// float logR2, R2, T;                                                      //left heater thermistor
+// float c1 = 1.009249522e-03, c2 = 2.378405444e-04, c3 = 2.019202697e-07;  //left heater thermistor
 
-float R3 = 10000;                                                        //right heater thermistor
-float logR4, R4, T2;                                                     //right heater thermistor
-float c4 = 1.009249522e-03, c5 = 2.378405444e-04, c6 = 2.019202697e-07;  //right heater thermistor
+// float R3 = 10000;                                                        //right heater thermistor
+// float logR4, R4, T2;                                                     //right heater thermistor
+// float c4 = 1.009249522e-03, c5 = 2.378405444e-04, c6 = 2.019202697e-07;  //right heater thermistor
 
 bool lefttowerstatuss;
 bool righttowerstatuss;
@@ -134,7 +130,7 @@ unsigned long currentMillis4 = millis();
 unsigned long previousMillis4 = 0;
 unsigned long currentMillis5 = millis();
 unsigned long previousMillis5 = 0;
-const long interval = 5000;
+const long interval = 10000;
 const long counterInterval = 1000;
 
 int brightness = 0;     // Current LED brightness
@@ -149,9 +145,9 @@ int calculateBrightness(long seconds) {
   int brightness = 0;
 
   // Define time variables
-  long startTime = 28800;   // 8 AM
-  long peakTime = 43200;   // 12 PM
-  long endTime = 75000;    // 8 PM
+  long startTime = 28800;
+  long peakTime = 43200;
+  long endTime = 85000;
 
   // Calculate brightness based on time of day
   if (seconds >= startTime && seconds <= peakTime) {
@@ -210,16 +206,6 @@ int readButtonState(unsigned long currentMillis) {
       buttonStatePrevious = LOW;
       buttonStateLongPress = false;
       Serial.println("Button released");
-
-      // If there is no measurement running to determine how long the button was pressed AND
-      // If the time the button has been pressed is smaller than the minimal time needed for a long press
-      // Note: The video shows:
-      //       if (!buttonStateLongPress && buttonPressDuration < minButtonLongPressDuration) {
-      //       since buttonStateLongPress is set to FALSE on line 75, !buttonStateLongPress is always TRUE
-      //       and can be removed.
-      //      if (buttonPressDuration < minButtonLongPressDuration) {
-      //        Serial.println("Button pressed shortly");
-      //      }
     }
 
     // store the current timestamp in previousButtonMillis
@@ -316,14 +302,6 @@ void dumpSD() {
     myFile.print(" \t");
     myFile.print(right_water_temp);
     myFile.print("\t");
-    myFile.print(left_heater_temp);
-    myFile.print(" \t");
-    myFile.print(right_heater_temp);
-    myFile.print("\t");
-    myFile.print(left_heater_pwm);
-    myFile.print(" \t");
-    myFile.print(right_heater_pwm);
-    myFile.print(" \t");
     myFile.print(tower_led_pwm);
     myFile.print(" \t");
 
@@ -336,6 +314,76 @@ void dumpSD() {
     return;
   }
 }
+
+// Function to convert RtcDateTime to String
+String RtcDateTimeToString(const RtcDateTime& dt) {
+  char date[12];
+  sprintf(date, "%04d-%02d-%02d", dt.Year(), dt.Month(), dt.Day());
+  return String(date);
+}
+
+int getUniqueDateCount() {
+  File myFile;
+  int uniqueDays = 0;
+  int uniqueMonths = 0;
+  int uniqueYears = 0;
+
+  // Strings to keep track of unique dates, months, and years
+  String previousDay = "";
+  String previousMonth = "";
+  String previousYear = "";
+
+  // Open the file for reading
+  if (SD.begin(53)) {
+    myFile = SD.open("log.txt", FILE_READ);
+    if (myFile) {
+      while (myFile.available()) {
+        String line = myFile.readStringUntil('\n');
+        // Extract the timestamp (assuming it's in the format "DD/MM/YYYY hh:mm:ss" or "DD/MM/YYYY")
+        String timestamp;
+        if (line.length() >= 10) {
+          timestamp = line.substring(0, 10);
+        } else {
+          continue; // Skip lines with invalid timestamps
+        }
+
+        String day = timestamp.substring(0, 2);
+        String month = timestamp.substring(3, 5);
+        String year = timestamp.substring(6, 10);
+
+        if (day != previousDay) {
+          uniqueDays++;
+          previousDay = day;
+        }
+        if (month != previousMonth) {
+          uniqueMonths++;
+          previousMonth = month;
+        }
+        if (year != previousYear) {
+          uniqueYears++;
+          previousYear = year;
+        }
+      }
+      myFile.close();
+    } else {
+      // File open error
+      Serial.println("Error opening log.txt");
+    }
+  } else {
+    // SD card initialization error
+    Serial.println("SD card initialization failed");
+  }
+
+  // Calculate the sum of unique days, months, and years
+  int totalUniqueDates = uniqueDays + uniqueMonths + uniqueYears;
+
+  // Output the total count
+  Serial.print("Total Unique Dates: ");
+  Serial.println(totalUniqueDates);
+
+  return totalUniqueDates;
+}
+
 
 void setup(void) {
   Serial.begin(9600);
@@ -398,11 +446,10 @@ void setup(void) {
   pinMode(RED, OUTPUT);
   pinMode(REALTIMECLOCK, OUTPUT);
   tft.initR(INITR_BLACKTAB);  // initialize a ST7735S chip, black tab
-  tft.fillScreen(COLOR2);
   tft.setRotation(1);  //screen rotation
 
   //-----START Welcome and Starting SCREEN-----
-  tft.fillScreen(COLOR2);
+  tft.fillScreen(COLOR1);
   tft.setFont(&FreeSans9pt7b);
   tft.setCursor(20, 60);
   tft.print("ALGAE TREE");
@@ -411,12 +458,12 @@ void setup(void) {
   tft.setFont(NULL);
   tft.setTextSize(1);
   //tft.print("Developed by");
-  tft.setCursor(20, 105);
+  // tft.setCursor(20, 105);
   //tft.print("saikne.com");
   delay(1000);
-  tft.fillScreen(COLOR2);
-  tft.setFont(&FreeSans9pt7b);
-  tft.setCursor(30, 60);
+  // tft.fillScreen(COLOR2);
+  // tft.setFont(&FreeSans9pt7b);
+  // tft.setCursor(30, 60);
   // tft.print("STARTING...");
   // delay(1500);
   tft.fillScreen(COLOR1);
@@ -451,10 +498,10 @@ void loop() {
     doc["air_humid"] = scd30.relative_humidity;
     doc["left_water_temp"] = left_water_temp;
     doc["right_water_temp"] = right_water_temp;
-    doc["left_heater_temp"] = left_heater_temp;
-    doc["right_heater_temp"] = right_heater_temp;
-    doc["left_heater_pwm"] = left_heater_pwm;
-    doc["right_heater_pwm"] = right_heater_pwm;
+    // doc["left_heater_temp"] = left_heater_temp;
+    // doc["right_heater_temp"] = right_heater_temp;
+    // doc["left_heater_pwm"] = left_heater_pwm;
+    // doc["right_heater_pwm"] = right_heater_pwm;
     doc["tower_led_pwm"] = tower_led_pwm;
 
     // Create a nested JSON object for the date and time
@@ -517,11 +564,14 @@ void loop() {
   // Serial.print(righttowerstatuss);
   
 
+  // Calling daysOnline()
+  int totalUniqueDates = getUniqueDateCount();
+
   //Tower LEDs
   long seconds = (long(now.Hour()) * 3600) + (long(now.Minute()) * 60) + long(now.Second());
   int brightness = calculateBrightness(seconds);
-  analogWrite(TOWER_LED_PWM, 255);
-  tower_led_pwm = brightness;
+  // tower_led_pwm = brightness;
+  analogWrite(TOWER_LED_PWM, brightness);
   
 
   sensors.requestTemperatures();                   //request for left DS18B20 water temp sensor
@@ -530,48 +580,62 @@ void loop() {
   right_water_temp = sensors2.getTempCByIndex(0);  //assign right DS18B20 water temp sensor
 
 
-  Vo = analogRead(LEFT_HEATER_T);
-  R2 = R1 * (1023.0 / (float)Vo - 1.0);
-  logR2 = log(R2);
-  left_heater_temp = (1.0 / (c1 + c2 * logR2 + c3 * logR2 * logR2 * logR2));
-  left_heater_temp = left_heater_temp - 273.15;
-  //left_heater_temp = (left_heater_temp * 9.0)/ 5.0 + 32.0;
+  // Vo = analogRead(LEFT_HEATER_T);
+  // R2 = R1 * (1023.0 / (float)Vo - 1.0);
+  // logR2 = log(R2);
+  // left_heater_temp = (1.0 / (c1 + c2 * logR2 + c3 * logR2 * logR2 * logR2));
+  // left_heater_temp = left_heater_temp - 273.15;
+  // //left_heater_temp = (left_heater_temp * 9.0)/ 5.0 + 32.0;
 
-  Vo2 = analogRead(RIGHT_HEATER_T);
-  R4 = R3 * (1023.0 / (float)Vo2 - 1.0);
-  logR4 = log(R4);
-  right_heater_temp = (1.0 / (c4 + c5 * logR4 + c6 * logR4 * logR4 * logR4));
-  //property of Saikne
-  right_heater_temp = right_heater_temp - 273.15;
-  // right_heater_temp = (right_heater_temp * 9.0)/ 5.0 + 32.0;
+  // Vo2 = analogRead(RIGHT_HEATER_T);
+  // R4 = R3 * (1023.0 / (float)Vo2 - 1.0);
+  // logR4 = log(R4);
+  // right_heater_temp = (1.0 / (c4 + c5 * logR4 + c6 * logR4 * logR4 * logR4));
+  // //property of Saikne
+  // right_heater_temp = right_heater_temp - 273.15;
+  // // right_heater_temp = (right_heater_temp * 9.0)/ 5.0 + 32.0;
 
 
-  if ((left_heater_temp <= 40) && (left_heater_temp >= 10) && (left_water_temp <= 30) && (left_water_temp >= 10)) {
-    analogWrite(LEFT_HEATER_PWM, 40);
-    left_heater_pwm = 40;
+  // if ((left_heater_temp <= 40) && (left_heater_temp >= 10) && (left_water_temp <= 30) && (left_water_temp >= 10)) {
+  //   analogWrite(LEFT_HEATER_PWM, 40);
+  //   left_heater_pwm = 40;
 
-  } else {
-    analogWrite(LEFT_HEATER_PWM, 0);
-    left_heater_pwm = 0;
-  }
+  // } else {
+  //   analogWrite(LEFT_HEATER_PWM, 0);
+  //   left_heater_pwm = 0;
+  // }
 
-  if ((right_heater_temp <= 40) && (right_heater_temp >= 10) && (right_water_temp <= 30) && (right_water_temp >= 10)) {
-    analogWrite(RIGHT_HEATER_PWM, 80);
-    right_heater_pwm = 40;
+  // if ((right_heater_temp <= 40) && (right_heater_temp >= 10) && (right_water_temp <= 30) && (right_water_temp >= 10)) {
+  //   analogWrite(RIGHT_HEATER_PWM, 80);
+  //   right_heater_pwm = 40;
     
-  } else {
-    analogWrite(RIGHT_HEATER_PWM, 0);
-    right_heater_pwm = 0;
-  }
+  // } else {
+  //   analogWrite(RIGHT_HEATER_PWM, 0);
+  //   right_heater_pwm = 0;
+  // }
 
-  if ((right_heater_temp > 80) || (right_heater_temp < 1) || (right_water_temp > 40) || (right_water_temp < 1)) {
+  // if ((right_heater_temp > 80) || (right_heater_temp < 1) || (right_water_temp > 40) || (right_water_temp < 1)) {
+  //   righttowerstatuss = false;
+  // }
+  // else {
+  //   righttowerstatuss = true;
+  // }
+
+  // if ((left_heater_temp > 80) || (left_heater_temp < 1) || (left_water_temp > 40) || (left_water_temp < 1)) {
+  //   lefttowerstatuss = false;
+  // }
+  // else {
+  //   lefttowerstatuss = true;
+  // }
+
+  if ((right_water_temp > 40) || (right_water_temp < 1)) {
     righttowerstatuss = false;
   }
   else {
     righttowerstatuss = true;
   }
 
-  if ((left_heater_temp > 80) || (left_heater_temp < 1) || (left_water_temp > 40) || (left_water_temp < 1)) {
+  if ((left_water_temp > 40) || (left_water_temp < 1)) {
     lefttowerstatuss = false;
   }
   else {
@@ -585,7 +649,7 @@ void loop() {
   counting++;
     }
 
-  if (((counting % 5) == 0) && (counting != 1)) {
+  if (((counting % 60) == 0) && (counting != 1)) {
     dumpSD();
     //Serial.println("Dumped to SD");
   }
@@ -599,92 +663,98 @@ void loop() {
 
     currentMillis1 = millis();
     if (currentMillis1 - previousMillis1 >= interval) {
-      previousMillis1 = currentMillis1;
-    tft.setTextColor(COLOR2);
-    tft.setFont(&FreeSansBold9pt7b);
-    tft.setTextSize(1);
-    tft.setCursor(15,30);
-    tft.fillRect(15, 10, 20, 20, COLOR1);
-    if (scd30.dataReady()) {
-      if (!scd30.read()) {
-        Serial.println("Error reading sensor data");
-          return;
-        }
-      tft.print(scd30.temperature, 0);
+      previousMillis1 = currentMillis;
+      tft.setTextColor(COLOR2);
+      tft.setFont(&FreeSansBold9pt7b);
+      tft.setTextSize(1);
+      tft.setCursor(15,30);
+      tft.fillRect(15, 10, 20, 20, COLOR1);
+      if (scd30.dataReady()) {
+        if (!scd30.read()) {
+          Serial.println("Error reading sensor data");
+            return;
+          }
+        tft.print(scd30.temperature, 0);
+      }
+      tft.print("C");
+      // tft.drawBitmap(37,15,airTempIcon,19,19,COLOR2);
+
+      // //file off
+      // tft.drawBitmap(55,15,fileOFF,19,19,COLOR2);
+
+      // //file on
+      tft.drawBitmap(65,15,fileON,19,19,COLOR2);
+
+      // //wifi off
+      // tft.drawBitmap(75,15,wifiOFF,19,19,COLOR2);
+
+      // //wifi on
+      // tft.drawBitmap(85,15,wifiON,19,19,COLOR2);
+
+      // //Bluetooth off
+      // tft.drawBitmap(100,15,bluetoothOFF,19,19,COLOR2);
+
+      // //Bluetooth on
+      // tft.drawBitmap(95,20,bluetoothON,19,19,COLOR2);
+
+      //airHumid
+      tft.setCursor(115,30);
+      tft.fillRect(115, 10, 20, 20, COLOR1);
+      tft.print(scd30.relative_humidity, 0);
+      tft.drawBitmap(135,15,waterDrop,19,19,COLOR2);
+
+      //airCO2
+      tft.setTextSize(1);
+      tft.setFont(&FreeSansBold24pt7b);
+      if (scd30.CO2 <= 999){
+        tft.setCursor(25, 80);
+        tft.drawRoundRect(23, 40, 115, 55, 5, COLOR1);
+        tft.fillRect(25, 45, 110, 40, COLOR1);
+
+        tft.setCursor(40,80);
+        tft.drawRoundRect(30, 40, 95, 55, 5, COLOR2);
+        tft.fillRect(32, 45, 90, 40, COLOR1);
+        tft.print(scd30.CO2, 0);
+      }
+      else{
+        tft.setCursor(40,80);
+        tft.drawRoundRect(30, 40, 95, 55, 5, COLOR1);
+        tft.fillRect(32, 45, 90, 40, COLOR1);
+
+        tft.setCursor(25, 80);
+        tft.drawRoundRect(23, 40, 115, 55, 5, COLOR2);
+        tft.fillRect(25, 45, 110, 40, COLOR1);
+        tft.print(scd30.CO2, 0);
+      }
+      tft.setFont(NULL);
+      tft.setCursor(70, 85);
+      tft.print("PPM");
+
+      if (righttowerstatuss == false){
+        tft.drawBitmap(135,100, warning,19,19,COLOR2);
+        tft.drawBitmap(135,88, rightArrow,19,19,COLOR2);
+      }
+      else{
+        tft.fillRect(130, 90, 40, 30, COLOR1);
+      }
+
+      if(lefttowerstatuss == false){
+        tft.drawBitmap(10,100, warning,19,19,COLOR2);
+        tft.drawBitmap(10,88, leftArrow,19,19,COLOR2);
+      }
+      else{
+        tft.fillRect(0, 90, 30, 35, COLOR1);
+      }
+
+      int uniqueDays = getUniqueDateCount();
+      tft.fillScreen(COLOR1);
+      tft.drawBitmap(30,30, breath,96,96,COLOR2);
+      tft.setCursor(100,60);
+      tft.setFont(&FreeSansBold24pt7b);
+      tft.print(uniqueDays);
+      tft.fillScreen(COLOR1);
+      } 
     }
-    tft.print("C");
-    // tft.drawBitmap(37,15,airTempIcon,19,19,COLOR2);
-
-    // //file off
-    // tft.drawBitmap(55,15,fileOFF,19,19,COLOR2);
-
-    // //file on
-    tft.drawBitmap(65,15,fileON,19,19,COLOR2);
-
-    // //wifi off
-    // tft.drawBitmap(75,15,wifiOFF,19,19,COLOR2);
-
-    // //wifi on
-    tft.drawBitmap(85,15,wifiON,19,19,COLOR2);
-
-    // //Bluetooth off
-    // tft.drawBitmap(100,15,bluetoothOFF,19,19,COLOR2);
-
-    // //Bluetooth on
-    // tft.drawBitmap(95,20,bluetoothON,19,19,COLOR2);
-
-    // //airHumid
-    tft.setCursor(115,30);
-    tft.fillRect(115, 10, 20, 20, COLOR1);
-    tft.print(scd30.relative_humidity, 0);
-    tft.drawBitmap(135,15,waterDrop,19,19,COLOR2);
-
-  // // airCO2
-    
-    tft.setTextSize(1);
-    tft.setFont(&FreeSansBold24pt7b);
-    if (scd30.CO2 <= 999){
-      tft.setCursor(25, 80);
-      tft.drawRoundRect(23, 40, 115, 55, 5, COLOR1);
-      tft.fillRect(25, 45, 110, 40, COLOR1);
-
-      tft.setCursor(40,80);
-      tft.drawRoundRect(30, 40, 95, 55, 5, COLOR2);
-      tft.fillRect(32, 45, 90, 40, COLOR1);
-      tft.print(scd30.CO2, 0);
-    }
-    else{
-      tft.setCursor(40,80);
-      tft.drawRoundRect(30, 40, 95, 55, 5, COLOR1);
-      tft.fillRect(32, 45, 90, 40, COLOR1);
-
-      tft.setCursor(25, 80);
-      tft.drawRoundRect(23, 40, 115, 55, 5, COLOR2);
-      tft.fillRect(25, 45, 110, 40, COLOR1);
-      tft.print(scd30.CO2, 0);
-    }
-    }
-    
-    tft.setFont(NULL);
-    tft.setCursor(70, 85);
-    tft.print("PPM");
-
-    if (righttowerstatuss == false){
-      tft.drawBitmap(135,100, warning,19,19,COLOR2);
-      tft.drawBitmap(135,88, rightArrow,19,19,COLOR2);
-    }
-    else{
-      tft.fillRect(130, 90, 40, 30, COLOR1);
-    }
-
-    if(lefttowerstatuss == false){
-      tft.drawBitmap(10,100, warning,19,19,COLOR2);
-      tft.drawBitmap(10,88, leftArrow,19,19,COLOR2);
-    }
-    else{
-      tft.fillRect(0, 90, 30, 35, COLOR1);
-    }
-  }
     
   
 
@@ -750,33 +820,9 @@ void loop() {
       tft.setCursor(5, 57);
       tft.print("L heater temp:");
       tft.setCursor(100, 55);
-      tft.print(left_heater_temp, 1);
+      tft.print(tower_led_pwm, 1);
       tft.setCursor(125, 57);
       tft.print("C");
-
-      //seventh line
-      tft.setCursor(5, 67);
-      tft.print("R heater temp:");
-      tft.setCursor(100, 65);
-      tft.print(right_heater_temp, 1);
-      tft.setCursor(125, 67);
-      tft.print("C");
-
-      //eigth line
-      tft.setCursor(5, 77);
-      tft.print("L heater pwm:");
-      tft.setCursor(100, 75);
-      tft.print(left_heater_pwm, 1);
-      tft.setCursor(125, 77);
-      tft.print("PWM");
-
-      //nineth line
-      tft.setCursor(5, 87);
-      tft.print("R heater pwm:");
-      tft.setCursor(100, 85);
-      tft.print(right_heater_pwm, 1);
-      tft.setCursor(125, 87);
-      tft.print("PWM");
 
       //tenth line
       tft.setCursor(5, 97);
@@ -788,13 +834,13 @@ void loop() {
       tft.setCursor(5, 107);
       tft.print("SW_V:");
       tft.setCursor(40, 107);
-      tft.print("2.1.0");
+      tft.print(SV);
 
       //twelvth line
       tft.setCursor(75, 107);
       tft.print("HW_V:");
       tft.setCursor(100, 107);
-      tft.print("1.2.0");
+      tft.print(HV);
     }
   }
 
@@ -819,6 +865,7 @@ void loop() {
     digitalWrite(RED, HIGH);
   }
 
+  /* ---Algae growth and efficiency calculation---*/ 
   //  float light_intensity = myLux.getLux();
   //  Serial.print("light_intensity: ");
   //  Serial.println(light_intensity, 1);
