@@ -140,14 +140,14 @@ SoftwareSerial espSerial(19, 18);  // Define the ESP32 communication pins
 
 int calculateBrightness(long seconds) {
   // Define brightness variables
-  int brightnessMin = 255;
+  int brightnessMin = 50;
   int brightnessMax = 255;
   int brightness = 0;
 
   // Define time variables
   long startTime = 28800;
   long peakTime = 43200;
-  long endTime = 85000;
+  long endTime = 75600;
 
   // Calculate brightness based on time of day
   if (seconds >= startTime && seconds <= peakTime) {
@@ -570,7 +570,7 @@ void loop() {
   //Tower LEDs
   long seconds = (long(now.Hour()) * 3600) + (long(now.Minute()) * 60) + long(now.Second());
   int brightness = calculateBrightness(seconds);
-  // tower_led_pwm = brightness;
+  tower_led_pwm = brightness;
   analogWrite(TOWER_LED_PWM, brightness);
   
 
@@ -818,11 +818,10 @@ void loop() {
 
       //sixth line
       tft.setCursor(5, 57);
-      tft.print("L heater temp:");
+      tft.print("tower led pwm:");
       tft.setCursor(100, 55);
       tft.print(tower_led_pwm, 1);
       tft.setCursor(125, 57);
-      tft.print("C");
 
       //tenth line
       tft.setCursor(5, 97);
