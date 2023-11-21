@@ -1,6 +1,6 @@
 /*--------------------------------------------------------------------
 Author: Kristians Abolins
-Date: 26.09.2023
+Date: 03.11.2023
 SerialInputs - None
 SerialPrompts - Full data representation in .json format. If SD card or RTC is not readable will promt error
 Software version - 2.2.1 //Updates: Data transfer between Mega and ESP32, New UI layout, Disabled all heaters. 
@@ -78,17 +78,13 @@ Adafruit_SCD30 scd30;  // scd30 co2,humidity,temperature sensor
 
 String SV = "2.2.1";
 String HV = "2.1.0";
-int deviceID = 1003;
+int deviceID = 1001;
 const int buttonPin = 48;  // the number of the pushbutton pin
 float air_humidity, air_temp, co2;
 float humidity;
 int temperature;
 int left_water_temp;
 int right_water_temp;
-// int left_heater_temp;
-// int right_heater_temp;
-// int left_heater_pwm;   // Set to 5 for temperature to be 50C
-// int right_heater_pwm;  // Set to 5 for temperature to be 50C
 int tower_led_pwm;
 String message;
 int counter = 0;
@@ -96,16 +92,8 @@ String fileName;
 String fileFormat = ".txt";
 int count = 0;                                                           // count to chich SD dump dumps the data (if count is devidable by 5)
 int counting = 0;                                                        // counter to SD dump data log heaters
-int newcount = 1;                                                        //menu count
-bool ADMIN_SCREEN = false;                                               //Admin Screen
-// int Vo, Vo2;                                                             //thermistor variables
-// float R1 = 10000;                                                        //left heater thermistor
-// float logR2, R2, T;                                                      //left heater thermistor
-// float c1 = 1.009249522e-03, c2 = 2.378405444e-04, c3 = 2.019202697e-07;  //left heater thermistor
 
-// float R3 = 10000;                                                        //right heater thermistor
-// float logR4, R4, T2;                                                     //right heater thermistor
-// float c4 = 1.009249522e-03, c5 = 2.378405444e-04, c6 = 2.019202697e-07;  //right heater thermistor
+bool ADMIN_SCREEN = false;                                               //Admin Screen
 
 bool lefttowerstatuss;
 bool righttowerstatuss;
@@ -131,11 +119,13 @@ unsigned long previousMillis4 = 0;
 unsigned long currentMillis5 = millis();
 unsigned long previousMillis5 = 0;
 const long interval = 10000;
+const long interval2 = 10000;
 const long counterInterval = 1000;
 
 int brightness = 0;     // Current LED brightness
 
 SoftwareSerial espSerial(19, 18);  // Define the ESP32 communication pins
+
 
 
 int calculateBrightness(long seconds) {
@@ -429,26 +419,30 @@ void setup(void) {
   
 //  ----SET FOR RTC CALIBRATION----//
   // int year = 2023;
-  // int month = 9;
+  // int month = 11;
   // int date = 3;
-  // int hour = 18;
-  // int minute = 23;
+  // int hour = 20;
+  // int minute = 27;
   // now = RtcDateTime(year, month, date, hour, minute, now.Second());
   // Rtc.SetDateTime(now);
   // ----END----//
-
+  Serial.print("Starting sensors...");
   sensors.begin();   //DS18B20 left water temp sensor
   sensors2.begin();  //DS18B20 right water temp sensor
+  Serial.print("Sensors started successfully!");
+  Serial.print("Initializing buttons and LEDs...");
   pinMode(buttonPin, INPUT);
   pinMode(LEFT_WATER_T, INPUT_PULLUP);
   pinMode(YELLOW, OUTPUT);
   pinMode(GREEN, OUTPUT);
   pinMode(RED, OUTPUT);
   pinMode(REALTIMECLOCK, OUTPUT);
+  Serial.print("Buttons and LEDs initialized successfully!");
   tft.initR(INITR_BLACKTAB);  // initialize a ST7735S chip, black tab
   tft.setRotation(1);  //screen rotation
 
   //-----START Welcome and Starting SCREEN-----
+  Serial.print("Starting screen...");
   tft.fillScreen(COLOR1);
   tft.setFont(&FreeSans9pt7b);
   tft.setCursor(20, 60);
@@ -461,12 +455,13 @@ void setup(void) {
   // tft.setCursor(20, 105);
   //tft.print("saikne.com");
   delay(1000);
-  // tft.fillScreen(COLOR2);
-  // tft.setFont(&FreeSans9pt7b);
-  // tft.setCursor(30, 60);
-  // tft.print("STARTING...");
-  // delay(1500);
   tft.fillScreen(COLOR1);
+  tft.setFont(&FreeSans9pt7b);
+  tft.setCursor(30, 60);
+  tft.print("STARTING...");
+  delay(1500);
+  tft.fillScreen(COLOR1);
+  Serial.print("Starting screen finished");
 
   Timer1.initialize(5000000);  // Set the interrupt interval to 5 seconds (5,000,000 microseconds)
 }
@@ -498,10 +493,6 @@ void loop() {
     doc["air_humid"] = scd30.relative_humidity;
     doc["left_water_temp"] = left_water_temp;
     doc["right_water_temp"] = right_water_temp;
-    // doc["left_heater_temp"] = left_heater_temp;
-    // doc["right_heater_temp"] = right_heater_temp;
-    // doc["left_heater_pwm"] = left_heater_pwm;
-    // doc["right_heater_pwm"] = right_heater_pwm;
     doc["tower_led_pwm"] = tower_led_pwm;
 
     // Create a nested JSON object for the date and time
@@ -513,7 +504,6 @@ void loop() {
     timeObject["minute"] = minute;
     timeObject["second"] = second;
   
-
     // Serialize the JSON document into a string
     String jsonString;
     serializeJson(doc, jsonString);
@@ -527,45 +517,7 @@ void loop() {
     Timer1.resume();
   }
 
-  // Serial.print(deviceID);
-  // Serial.print("\t");
-  // Serial.print(scd30.CO2);
-  // Serial.print("\t");
-  // Serial.print(scd30.temperature);
-  // Serial.print("\t");
-  // Serial.print(scd30.relative_humidity);
-  // Serial.print("\t");
-  // Serial.print(left_water_temp);
-  // Serial.print("\t");
-  // Serial.print(right_water_temp);
-  // Serial.print("\t");
-  // Serial.print(left_heater_temp);
-  // Serial.print("\t");
-  // Serial.print(right_heater_temp);
-  // Serial.print("\t");
-  // Serial.print(left_heater_pwm);
-  // Serial.print("\t");
-  // Serial.print(right_heater_pwm);
-  // Serial.print("\t");
-  // Serial.print(tower_led_pwm);
-  // Serial.print("\t");
-
-  // RtcDateTime now = Rtc.GetDateTime();  //rtc get time
-  // printDateTime(now);
-  // if (!now.IsValid()) {
-  //   // Common Causes:
-  //   //    1) the battery on the device is low or even missing and the power line was disconnected
-  //   Serial.println("RTC lost confidence in the DateTime!");
-  //   return;
-  // }
-  // Serial.print("\t");
-  // Serial.print(lefttowerstatuss);
-  // Serial.print("\t");
-  // Serial.print(righttowerstatuss);
-  
-
-  // Calling daysOnline()
-  int totalUniqueDates = getUniqueDateCount();
+  // int totalUniqueDates = getUniqueDateCount();
 
   //Tower LEDs
   long seconds = (long(now.Hour()) * 3600) + (long(now.Minute()) * 60) + long(now.Second());
@@ -579,54 +531,6 @@ void loop() {
   left_water_temp = sensors.getTempCByIndex(0);    //assign left DS18B20 water temp sensor
   right_water_temp = sensors2.getTempCByIndex(0);  //assign right DS18B20 water temp sensor
 
-
-  // Vo = analogRead(LEFT_HEATER_T);
-  // R2 = R1 * (1023.0 / (float)Vo - 1.0);
-  // logR2 = log(R2);
-  // left_heater_temp = (1.0 / (c1 + c2 * logR2 + c3 * logR2 * logR2 * logR2));
-  // left_heater_temp = left_heater_temp - 273.15;
-  // //left_heater_temp = (left_heater_temp * 9.0)/ 5.0 + 32.0;
-
-  // Vo2 = analogRead(RIGHT_HEATER_T);
-  // R4 = R3 * (1023.0 / (float)Vo2 - 1.0);
-  // logR4 = log(R4);
-  // right_heater_temp = (1.0 / (c4 + c5 * logR4 + c6 * logR4 * logR4 * logR4));
-  // //property of Saikne
-  // right_heater_temp = right_heater_temp - 273.15;
-  // // right_heater_temp = (right_heater_temp * 9.0)/ 5.0 + 32.0;
-
-
-  // if ((left_heater_temp <= 40) && (left_heater_temp >= 10) && (left_water_temp <= 30) && (left_water_temp >= 10)) {
-  //   analogWrite(LEFT_HEATER_PWM, 40);
-  //   left_heater_pwm = 40;
-
-  // } else {
-  //   analogWrite(LEFT_HEATER_PWM, 0);
-  //   left_heater_pwm = 0;
-  // }
-
-  // if ((right_heater_temp <= 40) && (right_heater_temp >= 10) && (right_water_temp <= 30) && (right_water_temp >= 10)) {
-  //   analogWrite(RIGHT_HEATER_PWM, 80);
-  //   right_heater_pwm = 40;
-    
-  // } else {
-  //   analogWrite(RIGHT_HEATER_PWM, 0);
-  //   right_heater_pwm = 0;
-  // }
-
-  // if ((right_heater_temp > 80) || (right_heater_temp < 1) || (right_water_temp > 40) || (right_water_temp < 1)) {
-  //   righttowerstatuss = false;
-  // }
-  // else {
-  //   righttowerstatuss = true;
-  // }
-
-  // if ((left_heater_temp > 80) || (left_heater_temp < 1) || (left_water_temp > 40) || (left_water_temp < 1)) {
-  //   lefttowerstatuss = false;
-  // }
-  // else {
-  //   lefttowerstatuss = true;
-  // }
 
   if ((right_water_temp > 40) || (right_water_temp < 1)) {
     righttowerstatuss = false;
@@ -642,28 +546,32 @@ void loop() {
     lefttowerstatuss = true;
   }
 
-
+  //Counter counting
   currentMillis5 = millis();
-    if (currentMillis5 - previousMillis5 >= counterInterval) {
-        previousMillis5 = currentMillis5;
-  counting++;
+  if (currentMillis5 - previousMillis5 >= counterInterval) {
+    previousMillis5 = currentMillis5;
+    counting++;
     }
-
-  if (((counting % 60) == 0) && (counting != 1)) {
+  
+  //Dump to SD car the data
+  if (((counting % 5) == 0) && (counting != 1)) {
     dumpSD();
     //Serial.println("Dumped to SD");
   }
 
-
+// If we are NOT in the admin screen
   if (ADMIN_SCREEN == false) {
     if (clearScreenOnce == true){
       tft.fillScreen(COLOR1);
       clearScreenOnce = false;
     }
+    int uniqueDays = getUniqueDateCount();
 
+    //Starting the first screen
     currentMillis1 = millis();
     if (currentMillis1 - previousMillis1 >= interval) {
       previousMillis1 = currentMillis;
+      tft.fillScreen(COLOR1);
       tft.setTextColor(COLOR2);
       tft.setFont(&FreeSansBold9pt7b);
       tft.setTextSize(1);
@@ -746,19 +654,19 @@ void loop() {
         tft.fillRect(0, 90, 30, 35, COLOR1);
       }
 
-      int uniqueDays = getUniqueDateCount();
+    }
+
+    //Starting the other screen
+    currentMillis2 = millis();
+    if (currentMillis2 - previousMillis2 >= interval2) {
+      previousMillis2 = currentMillis2;  
       tft.fillScreen(COLOR1);
       tft.drawBitmap(30,30, breath,96,96,COLOR2);
       tft.setCursor(100,60);
       tft.setFont(&FreeSansBold24pt7b);
       tft.print(uniqueDays);
-      tft.fillScreen(COLOR1);
-      } 
     }
-    
-  
-
-  
+  }
 
   if (ADMIN_SCREEN == true) {
     clearScreenOnce = true;
@@ -909,8 +817,4 @@ void loop() {
 
 }
 
-// int calculateDeviceActive(int timestamp){
-  
-//   return days;
-// }
 
