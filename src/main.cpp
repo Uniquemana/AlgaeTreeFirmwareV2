@@ -78,7 +78,7 @@ Adafruit_SCD30 scd30;  // scd30 co2,humidity,temperature sensor
 
 String SV = "2.2.1";
 String HV = "2.1.0";
-int deviceID = 1001;
+int deviceID = 1002;
 const int buttonPin = 48;  // the number of the pushbutton pin
 float air_humidity, air_temp, co2;
 float humidity;
@@ -255,7 +255,7 @@ void dumpSD() {
   }
   //Serial.print("Initializing SD card...");
   if (!SD.begin(53)) {
-    //Serial.println("initialization failed!");
+    Serial.println("main SD initialization failed!");
     return;
   } 
   else {
@@ -418,11 +418,11 @@ void setup(void) {
   }
   
 //  ----SET FOR RTC CALIBRATION----//
-  // int year = 2023;
-  // int month = 11;
-  // int date = 3;
-  // int hour = 20;
-  // int minute = 27;
+  // int year = 2024;
+  // int month = 01;
+  // int date = 19;
+  // int hour = 17;
+  // int minute = 19;
   // now = RtcDateTime(year, month, date, hour, minute, now.Second());
   // Rtc.SetDateTime(now);
   // ----END----//
